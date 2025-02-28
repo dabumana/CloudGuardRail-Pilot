@@ -1,0 +1,159 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Template for AWS with Lambda + IAM + SNS + SQS + EventRule + ControlTower'
+
+Parameters:
+  LambdaRuntime:
+    Type: String
+    Default: python3.9
+    Description: 'Function runtime'
+  MemorySize:
+    Type: Number
+    Default: 500m
+    Description: 'Memory size'
+  Topic:
+    Type: String
+    Description: 'SNS Topic name'
+  Queue:
+    Type: String
+    Description: 'SQS Queue name'
+  VPC:
+    Type: String
+    Description: 'VPC identification name'
+  Subnet:
+    Type: List<String>
+    Description: 'Subnet list for VPC'
+  S3:
+    Type: String
+    Description: 'S3 bucket storage'
+
+Resources:
+
+  WorkerRole:
+    Type: 'AWS::IAM:Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+                - ec2.amazonaws.com
+            Action:
+              -'sts:AssumeRole'
+      Policies:
+        - PolicyName: execution-role-policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource:!Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${LambdaFunction}'
+              - Effect: Allow
+                Action:
+                  -'sqs:ReceiveMessage'
+                  -'sqs:DeleteMessage'
+                Resource:!Ref SQSQueue
+              - Effect: Allow
+                Action:
+                  -'sns:Publish'
+                Resource:!Ref SNSTopic
+              - Effect: Allow
+                Action:
+                  - 'ec2:CreateNetworkInterface'
+                  - 'ec2:DeleteNetworkInterface'
+                  - 'ec2:DescribeNetworkInterfaces'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  -'s3:GetObject'
+                  -'s3:ListBucket'
+                Resource:
+                  -!Sub 'arn:aws:s3:::${S3}'
+                  -!Sub 'arn:aws:s3:::${S3}/*'
+
+  EventFunction:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Code:
+        S3Bucket:!Ref S3
+        S3ObjectKey:!Ref event_function.zip
+      MemorySize:!Ref MemorySize
+      Runtime:!Ref LambdaRuntime
+      FunctionName:!Sub 'event-function-${AWS::Region}'
+      Handler: event_function.handler
+      Role:!GetAtt 'WorkerRole.arn'
+      Environment:
+        Variables:
+          TopicArn:!Ref SNSTopic
+      VpcConfig:
+        SecurityGroupIds:
+          -!Ref SecurityGroup
+        SubnetIds:
+          -!Ref Subnet
+
+  SecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Worker CI Security Group
+      VpcId:!Ref VPC
+
+  SNSTopic:
+    Type: 'AWS::SNS::Topic'
+    Properties:
+      TopicName:!Ref Topic
+
+  SNSSubsc:
+    Type: 'AWS::SNS::Subscription'
+    Properties:
+      TopicArn:!GetAtt SNSTopic.arn
+      Protocol: sqs
+      Endpoint:!GetAtt SQSQueue.arn
+
+  SQSQueue:
+    Type: 'AWS::SQS::Queue'
+    Properties:
+      QueueName:!Ref Queue
+
+  EventRule:
+    Type: 'AWS::Events::Rule'
+    Properties:
+      Name:!Sub 'event-bridge-rule-${AWS::Region}'
+      EventPattern:
+        source:
+          - 'aws.sqs'
+        resources:
+          -!GetAtt SQSQueue.arn
+        detail:
+          eventName:
+            - 'CreateQueue'
+      State: ENABLED
+      Targets:
+        - Id:!Ref EventFunction
+          Arn:!GetAtt EventFunction.Arn
+
+  ControlTower:
+    Type: 'AWS::ControlTower::EnabledControl'
+    Properties:
+      TargetIdentifier:!Sub '${AWS::AccountId}-${AWS::Region}'
+      ControlIdentifier: 'SQS Event Monitoring'
+
+Outputs:
+  WorkerRoleArn:
+    Value:!GetAtt 'WorkerRole.arn'
+    Description: 'Pipeline worker role'
+  EventFunctionArn:
+    Value:!GetAtt 'EventFunction.arn'
+    Description: 'Lambda function'
+  SNSTopicArn:
+    Value:!GetAtt 'SNSTopic.arn'
+    Description: 'SNS topic'
+  SQSQueueArn:
+    Value:!GetAtt 'SQSQueue.arn'
+    Description: 'SQS queue'
+  EventRuleArn:
+    Value:!GetAtt 'EventRule.arn'
+    Description: 'Event bridge rule'
