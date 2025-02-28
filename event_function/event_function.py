@@ -1,6 +1,5 @@
-import boto3
-import json
 import os
+import boto3
 
 sns = boto3.client('sns')
 sqs = boto3.client('sqs')
