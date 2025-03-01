@@ -5,8 +5,7 @@ on:
 jobs:
  formation:
    runs-on: ubuntu-latest
-   environment:
-     name: ${{ secrets.GH_SEC_KEY }}
+   environment: dev
    steps:
    
      - name: Credentials setup for AWS
