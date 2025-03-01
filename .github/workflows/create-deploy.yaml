@@ -1,0 +1,30 @@
+name: Create-Deploy
+on:
+  push:
+    branches: [main]
+jobs:
+ daily_job:
+   runs-on: ubuntu-latest
+   environment:
+     name: ${{ secrets.GH_SEC_KEY }}
+   steps:
+   
+     - name: Credentials setup for AWS
+       uses: aws-actions/configure-aws-credentials@v4
+       with:
+         aws-access-key-id: ${{ secrets.AWS_ACC_KEY }}
+         aws-secret-access-key: ${{ secrets.AWS_SEC_AC_KEY }}
+         aws-region: us-east-2
+         role-to-assume: ${{ secrets.AWS_WKR_ROLE }}
+         
+     - name: Checkout repository
+       uses: actions/checkout@v4
+       
+     - name: Deploy to AWS CloudFormation
+       uses: aws-actions/aws-cloudformation-github-deploy@v1
+       with:
+         name: create-deploy
+         template:  template.yaml
+         capabilities: CAPABILITY_IAM
+         timeout-in-minutes: 10
+         termination-protection: 0

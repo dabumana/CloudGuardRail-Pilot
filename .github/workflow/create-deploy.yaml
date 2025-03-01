@@ -1,0 +1,7 @@
+  uses: aws-actions/aws-cloudformation-github-deploy@v1.2.0
+  with:
+    name: create-deploy
+    template:  ./template.yaml
+    capabilities: CAPABILITY_IAM
+    timeout-in-minutes: 10
+    termination-protection: 0      
